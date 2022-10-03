@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
 	configuration "mesh/configuration"
 	"mesh/hostrpc/rpc"
 	"mesh/meshnetwork"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -24,7 +26,6 @@ func main() {
 	if len(os.Args) != 4{
 		panic("uncompatible number of command line arguments")
 	}
-
 	topic := os.Args[1]
 	probability,err := strconv.ParseFloat(os.Args[2],32)
 	if err != nil{panic(err)}
@@ -58,13 +59,19 @@ func main() {
 		panic(err)
 	}
 
-	
+
+	_, err = http.Post("http://localhost:8090/signup","application/text",bytes.NewBuffer([]byte(node.Getp2paddrs()[0].String())))
+	if err != nil{
+		panic(err)
+		fmt.Scanln()
+	}
 	c := rpc.NewControlService(node)
+	
 	rpc.Start(c)
 	fmt.Scanln()
 
 	avg, err := node.GetAverageMsgTimeByTopicname(topic)
-	if err != nil{
+	if err == nil{
 		fmt.Printf("\nAverage time:%d ms",avg)
 	}
 	close(cli)

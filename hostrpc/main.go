@@ -28,13 +28,6 @@ const (
 )
 
 
-
-
-
-
-
-
-
 func main() {
 	host := startclient()
 

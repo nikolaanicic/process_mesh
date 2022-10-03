@@ -28,7 +28,7 @@ type MeshNode struct {
 	ctx 			context.Context
 	CLI				chan string
 	PS				*pubsub.PubSub
-	p2paddr			multiaddr.Multiaddr
+	P2paddr			multiaddr.Multiaddr
 	cfg				configuration.ConfigNode
 }
 
@@ -37,6 +37,7 @@ func NewNode(cli chan string,ctx context.Context,cfg configuration.ConfigNode)(*
 	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"), libp2p.NATPortMap(),libp2p.WithDialTimeout(time.Minute * 1))
 
 	if err != nil{return nil, err}
+
 	return &MeshNode{
 		topics: make(map[string]*MeshTopic),
 		Host:h,
@@ -101,11 +102,11 @@ func (n *MeshNode) Jointopicname(t string) bool{
 
 func (n *MeshNode) formatmesssage(msg string) string{
 
-	return fmt.Sprintf("\n<%s>:%s",n.p2paddr,msg)
+	return fmt.Sprintf("\n<%s>:%s",n.P2paddr,msg)
 }
 
 
-func (n *MeshNode) getp2paddrs() []multiaddr.Multiaddr{
+func (n *MeshNode) Getp2paddrs() []multiaddr.Multiaddr{
 	var retval []multiaddr.Multiaddr
 	for _, a := range n.Host.Addrs(){
 		p2paddr, err := multiaddr.NewMultiaddr("/ipfs/" + n.Host.ID().Pretty())
@@ -120,7 +121,7 @@ func (n *MeshNode) getp2paddrs() []multiaddr.Multiaddr{
 
 func (n *MeshNode) PrintP2PAddrs(){
 	retval := "\n" + strings.Repeat("-",20)
-	for _, a := range n.getp2paddrs(){
+	for _, a := range n.Getp2paddrs(){
 		retval += fmt.Sprintf("\n%s",a)
 	}
 	retval += "\n" + strings.Repeat("-",20)
@@ -192,26 +193,15 @@ func (n *MeshNode) Shutdown() error{
 }
 
 
-func (n *MeshNode) gettracer() (*pubsub.JSONTracer,error){
-	tracer,err := pubsub.NewJSONTracer(Tracesdir + n.Host.ID().Pretty() + ".json")
-	if err != nil{
-		return nil,err
-	}
-	return tracer,nil
-}
-
 func (n *MeshNode) initrouter() error{
 	
-	tracer,err := n.gettracer()
-	if err != nil{return err}
-
 	var ps *pubsub.PubSub
 	var e error
 
 	if n.cfg.Gossip{
-		ps, e = pubsub.NewGossipSub(n.ctx,n.Host,pubsub.WithEventTracer(tracer))
+		ps, e = pubsub.NewGossipSub(n.ctx,n.Host)
 	}else{
-		ps,e = pubsub.NewFloodSub(n.ctx,n.Host,pubsub.WithEventTracer(tracer))
+		ps,e = pubsub.NewFloodSub(n.ctx,n.Host)
 	}
 
 	if e != nil{return e}
@@ -228,9 +218,9 @@ func (n *MeshNode) Run(){
 		return
 	}
 
-	n.p2paddr = n.getp2paddrs()[0]
+	n.P2paddr = n.Getp2paddrs()[0]
 
-	n.CLI <- fmt.Sprintf("\n%s",n.p2paddr)
+	n.CLI <- fmt.Sprintf("\n%s",n.P2paddr)
 	n.EnterTopicname(n.cfg.Topic)
 
 
