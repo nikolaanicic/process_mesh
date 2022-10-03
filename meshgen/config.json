@@ -1,0 +1,6 @@
+{
+  "Nodecount": 1,
+  "GossipHeaders": true,
+  "ConnectionProbability": 0.2,
+  "Topic": "lotr"
+}
