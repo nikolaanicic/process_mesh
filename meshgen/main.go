@@ -12,12 +12,13 @@ import (
 
 
 
-const coordinatorpath = "http://192.168.9.101"
+const coordinatorpath = "http://192.168.9.101:10000"
 
 func signup(w http.ResponseWriter,req *http.Request){
 
+	_,err := http.Post(coordinatorpath + "/signup","application/text",req.Body)
+	if err != nil{panic(err)}
 	defer req.Body.Close()
-	http.Post(coordinatorpath + "/signup","application/text",req.Body)
 	
 }
 
@@ -28,15 +29,15 @@ func startnexttest(w http.ResponseWriter, req *http.Request){
 
 	var config configuration.MeshConfig
 	if err := json.Unmarshal(configbytes,&config); err != nil{return}
+	fmt.Println("received a new configuration")
 
-	go startnodes(config)
+	startnodes(config)
 }
 
 
 func handleresults(w http.ResponseWriter, req *http.Request){
 	http.Post(coordinatorpath + "/results","application/json",req.Body)
 	defer req.Body.Close()
-
 }
 
 func isdone(w http.ResponseWriter, req *http.Request){
@@ -48,14 +49,14 @@ func isdone(w http.ResponseWriter, req *http.Request){
 func startnodes(config configuration.MeshConfig){
 
 
-	fmt.Println("starting the nodes")
+	fmt.Println("starting the nodes",config.Nodecount)
+	fmt.Println(config.Nodes)
 	for _,confignode := range config.Nodes{
 		
 		cmdpath, err := exec.LookPath("cmd")
 		if err != nil {
 			panic(err)
 		}
-
 		cmd := &exec.Cmd{
 			Path: cmdpath,
 			Args: []string{"/c", "start", "mesh.exe", config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip),fmt.Sprintf("%t",confignode.Subscribe),fmt.Sprintf("%t",confignode.Mode),fmt.Sprintf("%d",confignode.MsgInterval),fmt.Sprintf("%d",confignode.TestLength)},
@@ -81,6 +82,7 @@ func main() {
 	http.HandleFunc("/signup",signup)
 	http.HandleFunc("/done",isdone)
 	http.HandleFunc("/results",handleresults)
+	fmt.Println("listening for the next test configuration")
 	http.HandleFunc("/next",startnexttest)
 
 	go http.ListenAndServe("localhost:8090",nil)

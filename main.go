@@ -25,7 +25,7 @@ func main() {
 	
 	
 
-	if len(os.Args) != 7{
+	if len(os.Args) != 8{
 		panic("uncompatible number of command line arguments")
 	}
 	topic := os.Args[1]
@@ -57,21 +57,21 @@ func main() {
 		TestLength: length,
 	}
 
-	// modestr := ""
+	modestr := ""
 
-	// if mode{
-	// 	modestr = "unstructured sending"
-	// }else{
-	// 	modestr = "round robin sending"
-	// }
+	if mode{
+		modestr = "unstructured sending"
+	}else{
+		modestr = "round robin sending"
+	}
 
-	// fmt.Printf("\nTopic:%s",topic)	
-	// fmt.Printf("\nGossip:%t",gossip)	
-	// fmt.Printf("\nSubbed:%t",sub)	
-	// fmt.Printf("\nProbability:%f",probability)
-	// fmt.Printf("\nMode:%s",modestr)
-	// fmt.Printf("\nSending interval:%d ms",interval)
-	// fmt.Printf("\nTest length:%d s",length)
+	fmt.Printf("\nTopic:%s",topic)	
+	fmt.Printf("\nGossip:%t",gossip)	
+	fmt.Printf("\nSubbed:%t",sub)	
+	fmt.Printf("\nProbability:%f",probability)
+	fmt.Printf("\nMode:%s",modestr)
+	fmt.Printf("\nSending interval:%d ms",interval)
+	fmt.Printf("\nTest length:%d s",length)
 
 	go monitorcli(cli)
 
@@ -92,11 +92,13 @@ func main() {
 		panic(err)
 	}
 
-
-	_, err = http.Post("http://localhost:8090/signup","application/text",bytes.NewBuffer([]byte(node.Getp2paddrs()[0].String())))
-	if err != nil{
-		panic(err)
+	if sub{
+		_, err = http.Post("http://localhost:8090/signup","application/text",bytes.NewBuffer([]byte(node.Getp2paddrs()[0].String())))
+		if err != nil{
+			panic(err)
+		}
 	}
+
 	c := rpc.NewControlService(node)
 	
 	rpc.Start(c)
@@ -116,7 +118,8 @@ func main() {
 		data, e := json.Marshal(stats)
 		if e != nil{panic(e)}
 
-		http.Post("http://localhost:8090/results","application/json",bytes.NewBuffer(data))
+		_,err := http.Post("http://localhost:8090/results","application/json",bytes.NewBuffer(data))
+		if err != nil{panic(err)}
 	}
 }
 

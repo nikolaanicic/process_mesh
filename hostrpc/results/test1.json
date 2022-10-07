@@ -1,0 +1,1 @@
+{"Stats":{"TotalMsgCount":564,"NonLocalMsgCount":0,"AverageDuration":0,"MinDuration":0,"MaxDuration":0},"Config":{"Nodecount":5,"GossipHeaders":true,"ConnectionProbability":0.3,"Topic":"lotr","Subscribed":0.7,"Mode":false,"MsgInterval":10,"TestLength":10,"TestName":"test1"}}

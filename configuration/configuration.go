@@ -84,6 +84,17 @@ func loadJson(jsonfilename string) (*CommonConfigFields, error) {
 	return config,nil
 }
 
+func NewMeshConfigFromCommon(common CommonConfigFields) (*MeshConfig,error){
+
+	configuration := &MeshConfig{
+		Nodes:         []ConfigNode{},
+		CommonConfigFields:common,
+		
+	}
+
+	configuration.generateNodes()
+	return configuration,nil
+}
 
 func NewMeshConfig(jsonfilename string) (*MeshConfig,error) {
 

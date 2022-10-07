@@ -3,8 +3,9 @@
   "GossipHeaders": true,
   "ConnectionProbability": 0.3,
   "Topic": "lotr",
-  "Subscribed": 0.3,
+  "Subscribed": 0.7,
   "Mode": false,
   "MsgInterval": 10,
-  "TestLength": 10
+  "TestLength": 10,
+  "TestName": "test1"
 }

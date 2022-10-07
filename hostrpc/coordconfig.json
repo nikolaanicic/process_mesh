@@ -1,0 +1,6 @@
+{
+  "MonitorCount": 2,
+  "Monitors": [{ "IP": "http://localhost:8090" }],
+  "TestDir": "tests/",
+  "ResultsDir": "results/"
+}

@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -26,7 +24,6 @@ import (
 )
 
 
-var done chan bool
 
 var peers []multiaddr.Multiaddr
 var mx sync.Mutex = sync.Mutex{}
@@ -50,19 +47,30 @@ type CoordinatorConfig struct{
 	ResultsDir string `json:"ResultsDir"`
 }
 
+type Result struct{
+	Stats mesh.Stats `json:"Stats"`
+	TestConfig configuration.CommonConfigFields `json:"Config"`
+}
+
 
 func main() {
 	host := startclient()
 
 	coordinatorConfig,err := loadCoordinatorConfig("coordconfig.json")
 	if err != nil{panic(err)}
+	fmt.Println("loaded the coordinators configuration")
 
 	tests, _ := loadTestConfigurations(coordinatorConfig.TestDir)
-
+	fmt.Println("loaded all the tests")
+	fmt.Println("test count",len(tests))
 
 	http.HandleFunc("/signup",signup)
-	go http.ListenAndServe(":10000",nil)
+	http.HandleFunc("/results",handleResult)
 
+	go http.ListenAndServe("192.168.9.101:10000",nil)
+
+	resdir := path.Join(coordinatorConfig.ResultsDir)
+	createdirhierarchy(resdir)
 
 	for _,testconfig := range tests{
 		
@@ -70,48 +78,55 @@ func main() {
 		resmx.Lock()
 		mx.Lock()
 
-		results := []mesh.Stats{}
+		results = []mesh.Stats{}
 
-		peers := []multiaddr.Multiaddr{}
-		nodecount = testconfig.Nodecount
+		peers = []multiaddr.Multiaddr{}
+		nodecount = int( float32(testconfig.Nodecount) * testconfig.Subscribed)
+
 
 		mx.Unlock()
 		resmx.Unlock()
+		fmt.Println("sending configurations")
+		fmt.Println(coordinatorConfig.Monitors)
 
 		for _, monitor := range coordinatorConfig.Monitors{
 			sendconfig(monitor.IP,testconfig)
 		}
 
-		<- signedup
 
 		if !testconfig.Mode{
+			ctx,cancel := context.WithDeadline(context.Background(),time.Now().Add(time.Second * time.Duration(testconfig.TestLength)))
+			fmt.Println("waiting for the nodes to signup")
+			<- signedup
 			ticker := time.NewTicker(time.Millisecond * time.Duration(testconfig.MsgInterval))
 			mx.Lock()
-			go manage(*ticker,peers,host)
+			fmt.Println("starting to manage the nodes")
+			go manage(*ticker,peers,host,ctx,testconfig.Topic)
+			go func(timer time.Timer,cancel context.CancelFunc){
+				<-timer.C
+				cancel()
+
+			}(*time.NewTimer(time.Duration(testconfig.TestLength) * time.Second),cancel)
 			mx.Unlock()
 		}
 
+		fmt.Println("waiting for the results")
+
 		<- testsdonech
-		resdir := path.Join(coordinatorConfig.ResultsDir,testconfig.TestName,".json")
-		createdirhierarchy(resdir)
 		
 		resmx.Lock()
-		agg := aggregateresults(results)
+		agg := aggregateresults()
 		resmx.Unlock()
-		saveres(agg,resdir)
+		saveres(Result{Stats: agg,TestConfig: testconfig},path.Join(resdir,testconfig.TestName) + ".json")
 	}
-
-
-	close(done)
 
 }
 
 
 
 func signup(w http.ResponseWriter,req *http.Request){
-	defer req.Body.Close()
 	peeraddrbytes, err := ioutil.ReadAll(req.Body)
-
+	defer req.Body.Close()
 	if err != nil{return}
 
 	ma,err := multiaddr.NewMultiaddr(string(peeraddrbytes))
@@ -119,7 +134,7 @@ func signup(w http.ResponseWriter,req *http.Request){
 
 	mx.Lock()
 	peers = append(peers, ma)
-	
+	fmt.Println(string(peeraddrbytes))
 	if len(peers) == nodecount{
 		signedup <- true
 	}
@@ -128,24 +143,51 @@ func signup(w http.ResponseWriter,req *http.Request){
 }
 
 
+func handleResult(w http.ResponseWriter,req *http.Request){
+	resbytes, err := ioutil.ReadAll(req.Body)
+	defer req.Body.Close()
 
-func sendconfig(ip string,configuration configuration.CommonConfigFields){
-	jsonbytes, err := json.Marshal(configuration)
-	if err != nil{panic(err)}
-	http.Post(ip + "/next","application/json",bytes.NewBuffer(jsonbytes))
+	if err != nil{return}
+
+	var result mesh.Stats
+	if err := json.Unmarshal(resbytes,&result);err != nil{return}
+
+	resmx.Lock()
+	results = append(results, result)
+	fmt.Println(results)
+	if len(results) == nodecount{
+		testsdonech <- true
+	}
+	resmx.Unlock()
 }
 
 
-func manage(ticker time.Ticker,peers []multiaddr.Multiaddr,h host.Host){
+
+
+
+func sendconfig(ip string,config configuration.CommonConfigFields){
+
+	meshconfig,err := configuration.NewMeshConfigFromCommon(config)
+	if err != nil{return}
+
+	jsonbytes, err := json.Marshal(meshconfig)
+	if err != nil{panic(err)}
+	_,err = http.Post(ip + "/next","application/json",bytes.NewBuffer(jsonbytes))
+	if err != nil{panic(err)}
+}
+
+
+
+func manage(ticker time.Ticker,peers []multiaddr.Multiaddr,h host.Host,ctx context.Context,topicname string){
 
 	idx := 0
 	plen := len(peers)
 	for {
 		select{
 		case <-ticker.C:
-			publish(h,peers[idx])
+			publish(h,peers[idx],topicname)
 			idx = (idx + 1) % plen
-		case <-done:
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -170,28 +212,6 @@ func startclient() host.Host{
 }
 
 
-
-func loadFromFile(filename string) ([]multiaddr.Multiaddr,error){
-
-	var retval []multiaddr.Multiaddr
-	file,err := os.Open(filename)
-	if err != nil{return nil,err}
-
-	scanner := bufio.NewScanner(file)
-	scanner.Split(bufio.ScanLines)
-
-	for scanner.Scan(){
-		straddr := scanner.Text()
-		m,err := multiaddr.NewMultiaddr(straddr)
-		if err !=nil{panic(err)}
-		retval = append(retval, m)
-	
-	}
-
-	return retval,nil
-}
-
-
 func connect(client host.Host,to multiaddr.Multiaddr) *gorpc.Client{
 
 	peerInfo, err := peer.AddrInfoFromP2pAddr(to)
@@ -210,10 +230,13 @@ func connect(client host.Host,to multiaddr.Multiaddr) *gorpc.Client{
 
 
 
-func publish(me host.Host,to multiaddr.Multiaddr){
+func publish(me host.Host,to multiaddr.Multiaddr,topicname string){
 	client := connect(me,to)
-	call(client,"ControlService","Publish",rpc.Args{Topicname: "lotr",Message: ""},to)
+	call(client,"ControlService","Publish",rpc.Args{Topicname: topicname,Message: ""},to)
 }
+
+
+
 
 
 
@@ -273,31 +296,20 @@ func loadCoordinatorConfig(filename string) (CoordinatorConfig,error){
 }
 
 
-func randstring() string{
-	charset := "abcdefghijklmnopqrstuvx"
-	l := 10
-	str := ""
+func aggregateresults() mesh.Stats{
 
-	for i:=0;i<l;i++{
-		str += string(charset[rand.Intn(len(charset))])
-	}
-
-	return str
-
-}
-
-func aggregateresults(results []mesh.Stats) mesh.Stats{
-
-	res := mesh.Stats{}
+	res := mesh.Stats{AverageDuration: 0}
 	for _,r := range results{
 		res.AverageDuration += r.AverageDuration
+		res.NonLocalMsgCount += r.NonLocalMsgCount
+		res.TotalMsgCount += r.TotalMsgCount
 	}
+	
 	res.AverageDuration = res.AverageDuration / int64(len(results))
-
 	return res
 }
 
-func saveres(res mesh.Stats,resfile string){
+func saveres(res Result,resfile string){
 
 	statbytes, err := json.Marshal(res)
 	if err != nil{panic(err)}
@@ -305,13 +317,6 @@ func saveres(res mesh.Stats,resfile string){
 	if err := ioutil.WriteFile(resfile,statbytes,os.ModePerm);err != nil{panic(err)}
 }
 
-
-func exists(path string) (bool,error){
-	_, err := os.Stat(path)
-	if err == nil{return true,nil}
-	if os.IsNotExist(err){return false,nil}
-	return false, err
-}
 
 func createdirhierarchy(path string){
 		if err := os.MkdirAll(path,os.ModePerm);err != nil{
