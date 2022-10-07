@@ -20,10 +20,10 @@ func main() {
 
 	cli := make(chan string,1)
 
-	ctx := context.Background()
+	ctx,cancel := context.WithCancel(context.Background())
 	
 
-	if len(os.Args) != 4{
+	if len(os.Args) != 5{
 		panic("uncompatible number of command line arguments")
 	}
 	topic := os.Args[1]
@@ -33,24 +33,35 @@ func main() {
 	gossip, err := strconv.ParseBool(os.Args[3])
 	if err != nil{panic(err)}
 
+	sub, err := strconv.ParseBool(os.Args[4])
+	if err != nil{panic(err)}
+
 	confNode := configuration.ConfigNode{
 		Topic: topic,
 		ConnectionProbability: float32(probability),
 		Gossip: gossip,
+		Subscribe: sub,
 	}
+
+	fmt.Printf("\nTopic:%s",topic)	
+	fmt.Printf("\nGossip:%t",gossip)	
+	fmt.Printf("\nSubbed:%t",sub)	
+	fmt.Printf("\nProbability:%f",probability)	
+
+
 
 
 	go monitorcli(cli)
 
-	if ok, err := exists(meshnetwork.Tracesdir); ok && err == nil{
-		if e := os.RemoveAll(meshnetwork.Tracesdir); e != nil{
-			panic(e)
-		}
-	}
+	// if ok, err := exists(meshnetwork.Tracesdir); ok && err == nil{
+	// 	if e := os.RemoveAll(meshnetwork.Tracesdir); e != nil{
+	// 		panic(e)
+	// 	}
+	// }
 	
-	if err := os.MkdirAll(meshnetwork.Tracesdir,os.ModePerm);err != nil{
-		panic(err)
-	}
+	// if err := os.MkdirAll(meshnetwork.Tracesdir,os.ModePerm);err != nil{
+	// 	panic(err)
+	// }
 
 
 	node,err := meshnetwork.NewNode(cli,ctx,confNode)
@@ -63,18 +74,22 @@ func main() {
 	_, err = http.Post("http://localhost:8090/signup","application/text",bytes.NewBuffer([]byte(node.Getp2paddrs()[0].String())))
 	if err != nil{
 		panic(err)
-		fmt.Scanln()
 	}
 	c := rpc.NewControlService(node)
 	
 	rpc.Start(c)
 	fmt.Scanln()
-
-	avg, err := node.GetAverageMsgTimeByTopicname(topic)
-	if err == nil{
-		fmt.Printf("\nAverage time:%d ms",avg)
-	}
+	cancel()
 	close(cli)
+
+	stats, err := node.GetStatsByTopicname(topic)
+	if err == nil{
+		fmt.Printf("\nTotal number of messages:%d",stats.TotalMsgCount)
+		fmt.Printf("\nNumber of non-local messges:%d",stats.NonLocalMsgCount)
+		fmt.Printf("\nAverage message passing latency:%d ms",stats.AverageDuration)
+		fmt.Printf("\nMinimum message passing latency:%d ms",stats.MinDuration)
+		fmt.Printf("\nMaximum message passing latency:%d ms\n",stats.MaxDuration)
+	}
 
 	fmt.Println("Press Enter to exit...")
 	fmt.Scanln()

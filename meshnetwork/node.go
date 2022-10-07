@@ -34,7 +34,7 @@ type MeshNode struct {
 
 
 func NewNode(cli chan string,ctx context.Context,cfg configuration.ConfigNode)(*MeshNode,error){
-	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"), libp2p.NATPortMap(),libp2p.WithDialTimeout(time.Minute * 1))
+	h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"), libp2p.NATPortMap())
 
 	if err != nil{return nil, err}
 
@@ -131,21 +131,21 @@ func (n *MeshNode) PrintP2PAddrs(){
 func (n *MeshNode) subtopic(topic *MeshTopic) bool{
 	if !topic.IsSubscribed(){
 		err := topic.Subscribe()
-		// if err != nil{
-		// 	n.print(n.formatmesssage(fmt.Sprintf("failed to subscribe to %s",err.Error())))
-		// }else{
-		// 	n.print(n.formatmesssage(fmt.Sprintf("subscribed %s topic",topic.Topicname)))
-		// }
+		if err != nil{
+			n.print(n.formatmesssage(fmt.Sprintf("failed to subscribe to %s",err.Error())))
+		}else{
+			n.print(n.formatmesssage(fmt.Sprintf("subscribed %s topic",topic.Topicname)))
+		}
 		return err != nil
 	}
 	return true
 }
 
-func (n *MeshNode) GetAverageMsgTimeByTopicname(topicname string) (int64,error){
+func (n *MeshNode) GetStatsByTopicname(topicname string) (Stats,error){
 	if topic,ok := n.topics[topicname];ok{
-		return topic.GetAverageDuration(),nil
+		return topic.GetStats(),nil
 	}
-	return -1,fmt.Errorf("invalid topicname")
+	return newStats(),fmt.Errorf("invalid topicname")
 }
 
 
@@ -167,16 +167,14 @@ func (n *MeshNode) Subtopicname(topicname string) bool{
 
 
 func (n *MeshNode) HandlePeerFound(pi peer.AddrInfo) {
+	go func(){
 		if rand.Float32() <= n.cfg.ConnectionProbability{
 			err := n.Host.Connect(n.ctx, pi)
 			if err != nil {
 				n.print(n.formatmesssage(err.Error()))
 			}
 		}
-
-
-
-
+	}()
 }
 
 func (n *MeshNode) setupLocalDiscovery() error {
@@ -214,7 +212,7 @@ func (n *MeshNode) initrouter() error{
 
 func (n *MeshNode) Run(){
 	if err := n.initrouter(); err != nil{
-		// n.print(n.formatmesssage(fmt.Sprintf("failed to init gossipsub router\terr:%s",err.Error())))
+		n.print(n.formatmesssage(fmt.Sprintf("failed to init gossipsub router\terr:%s",err.Error())))
 		return
 	}
 

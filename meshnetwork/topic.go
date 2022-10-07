@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -12,6 +13,17 @@ import (
 
 // size of the buffer in which the messages are going to be received
 const TopicBufferSize = 128
+
+
+type Stats struct{
+	TotalMsgCount int64
+	NonLocalMsgCount int64
+	AverageDuration int64
+	MinDuration int64
+	MaxDuration int64
+}
+
+
 
 type MeshTopic struct{
 	Ctx context.Context
@@ -22,8 +34,17 @@ type MeshTopic struct{
 	Self peer.ID
 	Messages chan *MeshMessage
 	CLI chan string
-	avgduration int64
-	msgcnt int64
+	topicStats Stats
+}
+
+func newStats() Stats{
+	return Stats{
+		TotalMsgCount: 0,
+		NonLocalMsgCount: 0,
+		AverageDuration: 0,
+		MinDuration: math.MaxInt64,
+		MaxDuration: math.MinInt64,
+	}
 }
 
 
@@ -41,13 +62,12 @@ func (t *MeshTopic) Subscribe() error{
 }
 
 
-func (t *MeshTopic) GetAverageDuration() int64{
-
-	if t.msgcnt != 0 {
-		return t.avgduration / t.msgcnt
+func (t *MeshTopic) GetStats() Stats{
+	if t.topicStats.NonLocalMsgCount > 0{
+		t.topicStats.AverageDuration = t.topicStats.AverageDuration/t.topicStats.NonLocalMsgCount
 	}
-
-	return -1
+	
+	return t.topicStats
 }
 
 func (t *MeshTopic) Publish(message string) error{
@@ -90,33 +110,55 @@ func (t *MeshTopic) tryclosemessages(){
 	if ok{close(t.Messages)}
 }
 
-func (t *MeshTopic) topicmessagehandler(){
-	t.avgduration = 0
-	t.msgcnt = 0
+
+func (t *MeshTopic) getnextmessage(ch chan *pubsub.Message) {
 
 	for{
-		msg, err := t.Sub.Next(t.Ctx)
+		msg,err := t.Sub.Next(t.Ctx)
 		if err != nil{
 			t.tryclosemessages()
 			return
 		}
+		ch <- msg
+	}
 
-		if msg.ReceivedFrom == t.Self{continue}
-		
+}
 
-		m := new(MeshMessage)
-		err = json.Unmarshal(msg.Data,m)
-		if err != nil{continue}
-		duration := time.Now().UTC().UnixMilli() - m.Timestamp
+func (t *MeshTopic) topicmessagehandler(){
 
-		
+	msgchan := make(chan *pubsub.Message,1)
+	go t.getnextmessage(msgchan)
 
-		t.msgcnt++
-		if duration < 0{duration = -duration}
-		t.avgduration += duration
+	for{
+		select{
+		case msg := <-msgchan:
+			t.topicStats.TotalMsgCount++
 
-		
-		//t.print(t.formatnewmesssage(m,duration))
+			if msg.ReceivedFrom == t.Self || msg.Local{
+				continue
+			}
+	
+			m := new(MeshMessage)
+			if err := json.Unmarshal(msg.Data,m);err != nil{continue}
+	
+			duration := time.Now().UTC().UnixMilli() - m.Timestamp
+	
+			if duration < 0{duration = -duration}
+	
+			t.topicStats.AverageDuration += duration
+			t.topicStats.NonLocalMsgCount++
+	
+			if duration > 0 && duration < t.topicStats.MinDuration{
+				t.topicStats.MinDuration = duration
+			}
+	
+			if duration > 0 && duration > t.topicStats.MaxDuration{
+				t.topicStats.MaxDuration = duration
+			}
+			//t.print(t.formatnewmesssage(m,duration))
+		case <-t.Ctx.Done():
+			return
+		}
 	}
 }
 
@@ -134,5 +176,6 @@ func JoinTopic(ctx context.Context, ps *pubsub.PubSub,topicname string,self peer
 		Messages: make(chan *MeshMessage,TopicBufferSize),
 		CLI:cli,
 		Topic: topic,
+		topicStats: newStats(),
 	}, nil
 }

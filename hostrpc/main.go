@@ -31,12 +31,12 @@ const (
 func main() {
 	host := startclient()
 
-	ticker := time.NewTicker(time.Millisecond * 10)
+	ticker := time.NewTicker(time.Millisecond * 20)
 	peers,err := loadFromFile("peers.txt")
 	if err != nil{panic(err)}
 
 	done = make(chan bool, 1)
-	fmt.Println("loaded the peers.press enter to start the round robin")
+	fmt.Println("loaded the peers. press enter to start the round robin sending")
 	fmt.Scanln()
 	go manage(*ticker,peers,host)
 	fmt.Println("Press Enter to exit...")

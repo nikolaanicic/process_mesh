@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 )
 
@@ -11,6 +12,7 @@ type ConfigNode struct {
 	Topic        			 string
 	Gossip					 bool
 	ConnectionProbability	 float32
+	Subscribe				 bool
 }
 
 
@@ -20,6 +22,7 @@ type commonConfigFields struct{
 	GossipHeaders 			 bool         			`json:"GossipHeaders"`
 	ConnectionProbability	 float32				`json:"ConnectionProbability"`
 	Topic        			 string     			`json:"Topic"`
+	Subscribed				float32					`json:"Subscribed"`
 
 }
 
@@ -30,6 +33,17 @@ type MeshConfig struct {
 
 
 
+func (c *MeshConfig) randomizesubscriptions(){
+
+	subbed := c.Subscribed * float32(c.Nodecount)
+	for i:=0;i<int(subbed);{
+		idx := rand.Intn(c.Nodecount)
+		if !c.Nodes[idx].Subscribe{
+			c.Nodes[idx].Subscribe = true
+			i++
+		}
+	}
+}
 
 
 func (c *MeshConfig) generateNodes(){
@@ -38,6 +52,8 @@ func (c *MeshConfig) generateNodes(){
 		c.Nodes[i].Gossip = c.GossipHeaders
 		c.Nodes[i].ConnectionProbability = c.ConnectionProbability
 	}
+
+	c.randomizesubscriptions()
 }
 
 func loadJson(jsonfilename string) (*commonConfigFields, error) {

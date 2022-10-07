@@ -44,13 +44,20 @@ func startnodes(){
 	fmt.Println("starting the nodes")
 	for _,confignode := range config.Nodes{
 		
-		cmd := &exec.Cmd{
-			Path:"cmd",
-			Args: []string{"/c","start","wt","-d",".","./mesh.exe",config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip)},
+		cmdpath, err := exec.LookPath("cmd")
+		if err != nil {
+			panic(err)
 		}
-		err := cmd.Start()
-		
-		if err != nil{panic(err)}
+
+		cmd := &exec.Cmd{
+			Path: cmdpath,
+			Args: []string{"/c", "start", "mesh.exe", config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip),fmt.Sprintf("%t",confignode.Subscribe)},
+		}
+		cmd.Start()
+
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	fmt.Println("nodes are started")

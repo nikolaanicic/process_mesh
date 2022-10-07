@@ -1,6 +1,7 @@
 {
-  "Nodecount": 5,
+  "Nodecount": 10,
   "GossipHeaders": true,
-  "ConnectionProbability": 0.2,
-  "Topic": "lotr"
+  "ConnectionProbability": 1.4,
+  "Topic": "lotr",
+  "Subscribed": 0.3
 }
