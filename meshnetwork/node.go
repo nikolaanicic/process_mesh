@@ -210,6 +210,20 @@ func (n *MeshNode) initrouter() error{
 }
 
 
+func (n *MeshNode) sendrandmessage(timer *time.Timer,ticker *time.Ticker){
+
+	<-timer.C
+
+	for{
+		select{
+		case <-n.ctx.Done(): return
+		case <-ticker.C:
+			n.TryPublishOnTopic(n.cfg.Topic)
+		}
+	}
+
+}
+
 func (n *MeshNode) Run(){
 	if err := n.initrouter(); err != nil{
 		n.print(n.formatmesssage(fmt.Sprintf("failed to init gossipsub router\terr:%s",err.Error())))
@@ -219,7 +233,14 @@ func (n *MeshNode) Run(){
 	n.P2paddr = n.Getp2paddrs()[0]
 
 	n.CLI <- fmt.Sprintf("\n%s",n.P2paddr)
-	n.EnterTopicname(n.cfg.Topic)
+	
+	if n.cfg.Subscribe{
+		n.EnterTopicname(n.cfg.Topic)
+	}
 
-
+	if n.cfg.Mode{
+		timer := time.NewTimer(time.Second * 10)
+		ticker := time.NewTicker(time.Millisecond * time.Duration(n.cfg.MsgInterval))
+		go n.sendrandmessage(timer,ticker)
+	}
 }

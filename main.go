@@ -14,6 +14,7 @@ import (
 	"time"
 )
 
+
 func main() {
 	fmt.Print("Press Enter to exit...")
 	rand.Seed(time.Now().UnixMilli())
@@ -23,7 +24,7 @@ func main() {
 	ctx,cancel := context.WithCancel(context.Background())
 	
 
-	if len(os.Args) != 5{
+	if len(os.Args) != 7{
 		panic("uncompatible number of command line arguments")
 	}
 	topic := os.Args[1]
@@ -36,19 +37,35 @@ func main() {
 	sub, err := strconv.ParseBool(os.Args[4])
 	if err != nil{panic(err)}
 
+	mode, err := strconv.ParseBool(os.Args[5])
+	if err != nil{panic(err)}
+
+	interval, err := strconv.ParseInt(os.Args[6],10,32)
+	if err != nil{panic(err)}
+
 	confNode := configuration.ConfigNode{
 		Topic: topic,
 		ConnectionProbability: float32(probability),
 		Gossip: gossip,
 		Subscribe: sub,
+		Mode:mode,
+		MsgInterval: interval,
+	}
+
+	modestr := ""
+
+	if mode{
+		modestr = "unstructured sending"
+	}else{
+		modestr = "round robin sending"
 	}
 
 	fmt.Printf("\nTopic:%s",topic)	
 	fmt.Printf("\nGossip:%t",gossip)	
 	fmt.Printf("\nSubbed:%t",sub)	
-	fmt.Printf("\nProbability:%f",probability)	
-
-
+	fmt.Printf("\nProbability:%f",probability)
+	fmt.Printf("\nMode:%s",modestr)
+	fmt.Printf("\nSending interval:%d",interval)
 
 
 	go monitorcli(cli)

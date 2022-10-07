@@ -13,6 +13,8 @@ type ConfigNode struct {
 	Gossip					 bool
 	ConnectionProbability	 float32
 	Subscribe				 bool
+	Mode					 bool
+	MsgInterval				 int64
 }
 
 
@@ -23,6 +25,8 @@ type commonConfigFields struct{
 	ConnectionProbability	 float32				`json:"ConnectionProbability"`
 	Topic        			 string     			`json:"Topic"`
 	Subscribed				float32					`json:"Subscribed"`
+	Mode 					bool					`json:"Mode"`
+	MsgInterval				int64					`json:"MsgInterval"`
 
 }
 
@@ -51,6 +55,8 @@ func (c *MeshConfig) generateNodes(){
 		c.Nodes = append(c.Nodes, ConfigNode{})
 		c.Nodes[i].Gossip = c.GossipHeaders
 		c.Nodes[i].ConnectionProbability = c.ConnectionProbability
+		c.Nodes[i].Mode = c.Mode
+		c.Nodes[i].MsgInterval = c.MsgInterval
 	}
 
 	c.randomizesubscriptions()

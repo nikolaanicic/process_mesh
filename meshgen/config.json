@@ -3,5 +3,7 @@
   "GossipHeaders": true,
   "ConnectionProbability": 1.4,
   "Topic": "lotr",
-  "Subscribed": 0.3
+  "Subscribed": 0.3,
+  "Mode": true,
+  "MsgInterval": 10
 }

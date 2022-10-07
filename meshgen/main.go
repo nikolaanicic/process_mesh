@@ -51,7 +51,7 @@ func startnodes(){
 
 		cmd := &exec.Cmd{
 			Path: cmdpath,
-			Args: []string{"/c", "start", "mesh.exe", config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip),fmt.Sprintf("%t",confignode.Subscribe)},
+			Args: []string{"/c", "start", "mesh.exe", config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip),fmt.Sprintf("%t",confignode.Subscribe),fmt.Sprintf("%t",confignode.Mode),fmt.Sprintf("%d",confignode.MsgInterval)},
 		}
 		cmd.Start()
 

@@ -66,7 +66,7 @@ func (t *MeshTopic) GetStats() Stats{
 	if t.topicStats.NonLocalMsgCount > 0{
 		t.topicStats.AverageDuration = t.topicStats.AverageDuration/t.topicStats.NonLocalMsgCount
 	}
-	
+
 	return t.topicStats
 }
 
@@ -134,7 +134,7 @@ func (t *MeshTopic) topicmessagehandler(){
 		case msg := <-msgchan:
 			t.topicStats.TotalMsgCount++
 
-			if msg.ReceivedFrom == t.Self || msg.Local{
+			if msg.ReceivedFrom == t.Self || msg.Local {
 				continue
 			}
 	
