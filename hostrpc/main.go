@@ -2,13 +2,21 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
 	"os"
-	"strconv"
+	"path"
+	"sync"
 	"time"
 
+	"mesh/configuration"
 	rpc "mesh/hostrpc/rpc"
+	mesh "mesh/meshnetwork"
 
 	"github.com/libp2p/go-libp2p"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
@@ -20,36 +28,112 @@ import (
 
 var done chan bool
 
-type Method int
+var peers []multiaddr.Multiaddr
+var mx sync.Mutex = sync.Mutex{}
 
-const (
-	Publish Method = iota
-	Exit
-)
+var signedup chan bool = make(chan bool,1)
+var testsdonech chan bool = make(chan bool,1) 
+
+var nodecount = 0
+
+var results []mesh.Stats
+var resmx sync.Mutex = sync.Mutex{}
+
+type Monitor struct{
+	IP string `json:"IP"`
+}
+
+type CoordinatorConfig struct{
+	MonitorCount int32  `json:"MonitorCount"`
+	Monitors []Monitor `json:"Monitors"`
+	TestDir string `json:"TestDir"`
+	ResultsDir string `json:"ResultsDir"`
+}
 
 
 func main() {
 	host := startclient()
 
-	ticker := time.NewTicker(time.Millisecond * 20)
-	peers,err := loadFromFile("peers.txt")
+	coordinatorConfig,err := loadCoordinatorConfig("coordconfig.json")
 	if err != nil{panic(err)}
 
-	done = make(chan bool, 1)
-	fmt.Println("loaded the peers. press enter to start the round robin sending")
-	fmt.Scanln()
-	go manage(*ticker,peers,host)
-	fmt.Println("Press Enter to exit...")
-	
-	fmt.Scanln()
-	done <- true
-	time.Sleep(time.Millisecond)
+	tests, _ := loadTestConfigurations(coordinatorConfig.TestDir)
+
+
+	http.HandleFunc("/signup",signup)
+	go http.ListenAndServe(":10000",nil)
+
+
+	for _,testconfig := range tests{
+		
+
+		resmx.Lock()
+		mx.Lock()
+
+		results := []mesh.Stats{}
+
+		peers := []multiaddr.Multiaddr{}
+		nodecount = testconfig.Nodecount
+
+		mx.Unlock()
+		resmx.Unlock()
+
+		for _, monitor := range coordinatorConfig.Monitors{
+			sendconfig(monitor.IP,testconfig)
+		}
+
+		<- signedup
+
+		if !testconfig.Mode{
+			ticker := time.NewTicker(time.Millisecond * time.Duration(testconfig.MsgInterval))
+			mx.Lock()
+			go manage(*ticker,peers,host)
+			mx.Unlock()
+		}
+
+		<- testsdonech
+		resdir := path.Join(coordinatorConfig.ResultsDir,testconfig.TestName,".json")
+		createdirhierarchy(resdir)
+		
+		resmx.Lock()
+		agg := aggregateresults(results)
+		resmx.Unlock()
+		saveres(agg,resdir)
+	}
+
 
 	close(done)
 
 }
 
 
+
+func signup(w http.ResponseWriter,req *http.Request){
+	defer req.Body.Close()
+	peeraddrbytes, err := ioutil.ReadAll(req.Body)
+
+	if err != nil{return}
+
+	ma,err := multiaddr.NewMultiaddr(string(peeraddrbytes))
+	if err != nil{return}
+
+	mx.Lock()
+	peers = append(peers, ma)
+	
+	if len(peers) == nodecount{
+		signedup <- true
+	}
+
+	mx.Unlock()
+}
+
+
+
+func sendconfig(ip string,configuration configuration.CommonConfigFields){
+	jsonbytes, err := json.Marshal(configuration)
+	if err != nil{panic(err)}
+	http.Post(ip + "/next","application/json",bytes.NewBuffer(jsonbytes))
+}
 
 
 func manage(ticker time.Ticker,peers []multiaddr.Multiaddr,h host.Host){
@@ -126,19 +210,11 @@ func connect(client host.Host,to multiaddr.Multiaddr) *gorpc.Client{
 
 
 
-
-
 func publish(me host.Host,to multiaddr.Multiaddr){
 	client := connect(me,to)
 	call(client,"ControlService","Publish",rpc.Args{Topicname: "lotr",Message: ""},to)
 }
 
-
-func exit(h host.Host){
-	err := h.Close()
-	if err !=nil{panic(err)}
-	os.Exit(0)
-}
 
 
 func call(client *gorpc.Client,svcname string,method string,args rpc.Args,to multiaddr.Multiaddr){
@@ -159,25 +235,87 @@ func call(client *gorpc.Client,svcname string,method string,args rpc.Args,to mul
 
 
 
-func menu() Method {
-	retval := Exit
-	loop := true
+func loadTestConfigurations(dir string) ([]configuration.CommonConfigFields,error){
+	files, err := os.ReadDir(dir)
+	if err != nil{return nil,err}
 
-	for loop{
-		fmt.Println("1.Publish")
-		fmt.Println("2.Close the client")
+	var configs []configuration.CommonConfigFields
 
-		var input string
-		fmt.Scanln(&input)
-		i,err := strconv.ParseInt(input,10,64)
-		if err == nil && i-1 >= int64(Publish) && i-1 <= int64(Exit){
-			retval = Method(i)
-			loop = false
-		}else{loop = true}
+	for _,file := range files{
+		config, err := loadTestConfiguration(path.Join(dir,file.Name()))
+		if err != nil{panic(err)}
+		configs = append(configs, config)
 	}
 
-	return Method(retval-1)
+	return configs,nil
 }
 
 
+func loadTestConfiguration(filename string) (configuration.CommonConfigFields, error){
+	filebytes,err := os.ReadFile(filename)
+
+	if err != nil{return configuration.CommonConfigFields{}, err}
+
+	var config configuration.CommonConfigFields
+	if err := json.Unmarshal(filebytes,&config); err != nil{return configuration.CommonConfigFields{},err}
+	return config,nil
+}
+
+
+func loadCoordinatorConfig(filename string) (CoordinatorConfig,error){
+	filebytes,err := os.ReadFile(filename)
+	if err != nil{return CoordinatorConfig{}, err}
+
+	var coordconfig CoordinatorConfig
+	if err := json.Unmarshal(filebytes,&coordconfig); err != nil{return coordconfig,err}
+
+	return coordconfig,nil
+}
+
+
+func randstring() string{
+	charset := "abcdefghijklmnopqrstuvx"
+	l := 10
+	str := ""
+
+	for i:=0;i<l;i++{
+		str += string(charset[rand.Intn(len(charset))])
+	}
+
+	return str
+
+}
+
+func aggregateresults(results []mesh.Stats) mesh.Stats{
+
+	res := mesh.Stats{}
+	for _,r := range results{
+		res.AverageDuration += r.AverageDuration
+	}
+	res.AverageDuration = res.AverageDuration / int64(len(results))
+
+	return res
+}
+
+func saveres(res mesh.Stats,resfile string){
+
+	statbytes, err := json.Marshal(res)
+	if err != nil{panic(err)}
+
+	if err := ioutil.WriteFile(resfile,statbytes,os.ModePerm);err != nil{panic(err)}
+}
+
+
+func exists(path string) (bool,error){
+	_, err := os.Stat(path)
+	if err == nil{return true,nil}
+	if os.IsNotExist(err){return false,nil}
+	return false, err
+}
+
+func createdirhierarchy(path string){
+		if err := os.MkdirAll(path,os.ModePerm);err != nil{
+		panic(err)
+	}
+}
 

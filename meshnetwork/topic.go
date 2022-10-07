@@ -23,6 +23,11 @@ type Stats struct{
 	MaxDuration int64
 }
 
+type TestResults struct{
+	Results [] Stats `json:"Results"`
+}
+
+
 
 
 type MeshTopic struct{

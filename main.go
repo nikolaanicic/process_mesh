@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	configuration "mesh/configuration"
@@ -21,7 +22,7 @@ func main() {
 
 	cli := make(chan string,1)
 
-	ctx,cancel := context.WithCancel(context.Background())
+	
 	
 
 	if len(os.Args) != 7{
@@ -43,6 +44,9 @@ func main() {
 	interval, err := strconv.ParseInt(os.Args[6],10,32)
 	if err != nil{panic(err)}
 
+	length,err := strconv.ParseInt(os.Args[7],10,32)
+	if err != nil{panic(err)}
+
 	confNode := configuration.ConfigNode{
 		Topic: topic,
 		ConnectionProbability: float32(probability),
@@ -50,23 +54,24 @@ func main() {
 		Subscribe: sub,
 		Mode:mode,
 		MsgInterval: interval,
+		TestLength: length,
 	}
 
-	modestr := ""
+	// modestr := ""
 
-	if mode{
-		modestr = "unstructured sending"
-	}else{
-		modestr = "round robin sending"
-	}
+	// if mode{
+	// 	modestr = "unstructured sending"
+	// }else{
+	// 	modestr = "round robin sending"
+	// }
 
-	fmt.Printf("\nTopic:%s",topic)	
-	fmt.Printf("\nGossip:%t",gossip)	
-	fmt.Printf("\nSubbed:%t",sub)	
-	fmt.Printf("\nProbability:%f",probability)
-	fmt.Printf("\nMode:%s",modestr)
-	fmt.Printf("\nSending interval:%d",interval)
-
+	// fmt.Printf("\nTopic:%s",topic)	
+	// fmt.Printf("\nGossip:%t",gossip)	
+	// fmt.Printf("\nSubbed:%t",sub)	
+	// fmt.Printf("\nProbability:%f",probability)
+	// fmt.Printf("\nMode:%s",modestr)
+	// fmt.Printf("\nSending interval:%d ms",interval)
+	// fmt.Printf("\nTest length:%d s",length)
 
 	go monitorcli(cli)
 
@@ -80,7 +85,7 @@ func main() {
 	// 	panic(err)
 	// }
 
-
+	ctx,cancel := context.WithDeadline(context.Background(),time.Now().Add(time.Second * time.Duration(length)))
 	node,err := meshnetwork.NewNode(cli,ctx,confNode)
 
 	if err != nil{
@@ -95,23 +100,25 @@ func main() {
 	c := rpc.NewControlService(node)
 	
 	rpc.Start(c)
-	fmt.Scanln()
+	
+	
+	<- ctx.Done()
 	cancel()
-	close(cli)
 
+	close(cli)
 	stats, err := node.GetStatsByTopicname(topic)
 	if err == nil{
-		fmt.Printf("\nTotal number of messages:%d",stats.TotalMsgCount)
-		fmt.Printf("\nNumber of non-local messges:%d",stats.NonLocalMsgCount)
-		fmt.Printf("\nAverage message passing latency:%d ms",stats.AverageDuration)
-		fmt.Printf("\nMinimum message passing latency:%d ms",stats.MinDuration)
-		fmt.Printf("\nMaximum message passing latency:%d ms\n",stats.MaxDuration)
+		// fmt.Printf("\nTotal number of messages:%d",stats.TotalMsgCount)
+		// fmt.Printf("\nNumber of non-local messges:%d",stats.NonLocalMsgCount)
+		// fmt.Printf("\nAverage message passing latency:%d ms",stats.AverageDuration)
+		// fmt.Printf("\nMinimum message passing latency:%d ms",stats.MinDuration)
+		// fmt.Printf("\nMaximum message passing latency:%d ms\n",stats.MaxDuration)
+		data, e := json.Marshal(stats)
+		if e != nil{panic(e)}
+
+		http.Post("http://localhost:8090/results","application/json",bytes.NewBuffer(data))
 	}
-
-	fmt.Println("Press Enter to exit...")
-	fmt.Scanln()
 }
-
 
 func monitorcli(cli chan string){
 	for m := range cli{
@@ -119,11 +126,11 @@ func monitorcli(cli chan string){
 	}
 }
 
-func exists(path string) (bool,error){
-	_, err := os.Stat(path)
-	if err == nil{return true,nil}
-	if os.IsNotExist(err){return false,nil}
-	return false, err
-}
+// func exists(path string) (bool,error){
+// 	_, err := os.Stat(path)
+// 	if err == nil{return true,nil}
+// 	if os.IsNotExist(err){return false,nil}
+// 	return false, err
+// }
 
 

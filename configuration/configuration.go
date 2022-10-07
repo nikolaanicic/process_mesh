@@ -15,11 +15,12 @@ type ConfigNode struct {
 	Subscribe				 bool
 	Mode					 bool
 	MsgInterval				 int64
+	TestLength				 int64
 }
 
 
 
-type commonConfigFields struct{
+type CommonConfigFields struct{
 	Nodecount     			 int          			`json:"Nodecount"`
 	GossipHeaders 			 bool         			`json:"GossipHeaders"`
 	ConnectionProbability	 float32				`json:"ConnectionProbability"`
@@ -27,11 +28,12 @@ type commonConfigFields struct{
 	Subscribed				float32					`json:"Subscribed"`
 	Mode 					bool					`json:"Mode"`
 	MsgInterval				int64					`json:"MsgInterval"`
-
+	TestLength				 int64					`json:"TestLength"`
+	TestName				string					`json:"TestName"`
 }
 
 type MeshConfig struct {
-	commonConfigFields
+	CommonConfigFields
 	Nodes         			 []ConfigNode
 }
 
@@ -57,12 +59,13 @@ func (c *MeshConfig) generateNodes(){
 		c.Nodes[i].ConnectionProbability = c.ConnectionProbability
 		c.Nodes[i].Mode = c.Mode
 		c.Nodes[i].MsgInterval = c.MsgInterval
+		c.Nodes[i].TestLength = c.TestLength
 	}
 
 	c.randomizesubscriptions()
 }
 
-func loadJson(jsonfilename string) (*commonConfigFields, error) {
+func loadJson(jsonfilename string) (*CommonConfigFields, error) {
 
 	fileinfo, err := os.Stat(jsonfilename)
 	if err != nil{return nil, err}
@@ -74,7 +77,7 @@ func loadJson(jsonfilename string) (*commonConfigFields, error) {
 	data, err := ioutil.ReadAll(file)
 	if err != nil{return nil,err}
 
-	config := new(commonConfigFields)
+	config := new(CommonConfigFields)
 	err = json.Unmarshal(data,config)
 	if err != nil{return nil,err}
 
@@ -89,7 +92,7 @@ func NewMeshConfig(jsonfilename string) (*MeshConfig,error) {
 
 	configuration := &MeshConfig{
 		Nodes:         []ConfigNode{},
-		commonConfigFields:*cfg,
+		CommonConfigFields:*cfg,
 		
 	}
 

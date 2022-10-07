@@ -1,44 +1,51 @@
 package main
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"mesh/configuration"
 	"net/http"
 	"os"
 	"os/exec"
-	"sync"
 )
 
 
-var mx sync.Mutex = sync.Mutex{}
-var ch chan string = make(chan string,1)
+
+const coordinatorpath = "http://192.168.9.101"
 
 func signup(w http.ResponseWriter,req *http.Request){
 
-	host,err := ioutil.ReadAll(req.Body)
+	defer req.Body.Close()
+	http.Post(coordinatorpath + "/signup","application/text",req.Body)
+	
+}
+
+func startnexttest(w http.ResponseWriter, req *http.Request){
+	configbytes, err := ioutil.ReadAll(req.Body)
+	defer req.Body.Close()
+	if err != nil{return}
+
+	var config configuration.MeshConfig
+	if err := json.Unmarshal(configbytes,&config); err != nil{return}
+
+	go startnodes(config)
+}
+
+
+func handleresults(w http.ResponseWriter, req *http.Request){
+	http.Post(coordinatorpath + "/results","application/json",req.Body)
 	defer req.Body.Close()
 
-	if err == nil{
-		mx.Lock()
-		fmt.Println(string(host))
+}
 
-		mx.Unlock()
-	}
-	fmt.Fprintf(w,"OK")
-	
+func isdone(w http.ResponseWriter, req *http.Request){
+	os.Exit(0)
 }
 
 
 
-func startnodes(){
-	fnameflag := flag.String("f", "config.json", "passes the configuration file")
-	flag.Parse()
-	fname := *fnameflag
-
-	config, err := configuration.NewMeshConfig(fname)
-	if err != nil{panic(err)}
+func startnodes(config configuration.MeshConfig){
 
 
 	fmt.Println("starting the nodes")
@@ -51,7 +58,7 @@ func startnodes(){
 
 		cmd := &exec.Cmd{
 			Path: cmdpath,
-			Args: []string{"/c", "start", "mesh.exe", config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip),fmt.Sprintf("%t",confignode.Subscribe),fmt.Sprintf("%t",confignode.Mode),fmt.Sprintf("%d",confignode.MsgInterval)},
+			Args: []string{"/c", "start", "mesh.exe", config.Topic,fmt.Sprintf("%f",confignode.ConnectionProbability),fmt.Sprintf("%t",confignode.Gossip),fmt.Sprintf("%t",confignode.Subscribe),fmt.Sprintf("%t",confignode.Mode),fmt.Sprintf("%d",confignode.MsgInterval),fmt.Sprintf("%d",confignode.TestLength)},
 		}
 		cmd.Start()
 
@@ -62,30 +69,27 @@ func startnodes(){
 
 	fmt.Println("nodes are started")
 }
+
+
 func main() {
 
 
 	exitch := make(chan bool,1)
 	go monitorexit(exitch)
-	go monitorcli()
 
-	go startnodes()
 
 	http.HandleFunc("/signup",signup)
-	go http.ListenAndServe("localhost:8090",nil)
+	http.HandleFunc("/done",isdone)
+	http.HandleFunc("/results",handleresults)
+	http.HandleFunc("/next",startnexttest)
 
+	go http.ListenAndServe("localhost:8090",nil)
 
 	fmt.Scanln()
 	exitch <- true
 
 }
 
-
-func monitorcli(){
-	for range ch{
-		fmt.Println(ch)
-	}
-}
 
 func monitorexit(ch chan bool){
 	for range ch{
